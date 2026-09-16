@@ -1,0 +1,21 @@
+name: refresh-chains
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "20,50 13-20 * * 1-5"
+permissions:
+  contents: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull CBOE and compact
+        run: python3 scripts/refresh.py
+      - name: Commit snapshot
+        run: |
+          git config user.name "chain-bot"
+          git config user.email "chain-bot@users.noreply.github.com"
+          git add data/reports.json
+          git diff --cached --quiet || git commit -m "refresh CBOE snapshot"
+          git push
