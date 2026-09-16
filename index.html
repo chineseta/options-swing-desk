@@ -1,1 +1,75 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>期权链短线读盘</title></head><body><p>完整界面请下载 artifacts 里的 zip，或把本地 options-swing-app/index.html 打开。本文件占位。</p><p>电脑运行: python3 server.py 然后打开 http://127.0.0.1:8765</p></body></html>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>期权链短线读盘</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#121820; --line:#1e2a36; --text:#e8eef4; --muted:#8aa0b3; --green:#3dd68c; --red:#ff6b7a; --amber:#f5c542; --blue:#6cb6ff; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui,sans-serif; }
+    header { padding:16px; border-bottom:1px solid var(--line); position:sticky; top:0; background:#0b0f14ee; }
+    h1 { margin:0 0 4px; font-size:16px; }
+    .sub,.disclaimer { color:var(--muted); font-size:12px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+    button { background:#121820; color:#e8eef4; border:1px solid #1e2a36; border-radius:8px; padding:8px 12px; }
+    button.on { background:#1b4d3e; border-color:#2a7a60; }
+    main { max-width:900px; margin:0 auto; padding:14px 16px 60px; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; margin:12px 0; }
+    h2 { margin:0 0 8px; font-size:12px; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; }
+    .v-WAIT { color:var(--amber); } .v-AVOID { color:var(--red); } .v-SHORT { color:var(--blue); }
+    .verdict { font-size:22px; font-weight:700; }
+    pre { background:#0a1016; padding:10px; border-radius:8px; overflow:auto; font-size:12px; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th,td { padding:6px; border-bottom:1px solid #18222c; text-align:left; }
+    .call { color:var(--green); } .put { color:var(--red); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>US Options Chain · 1–10 日</h1>
+    <div class="sub" id="meta">正在加载 GitHub 上的 CBOE 快照…</div>
+    <div class="row" id="btns"></div>
+  </header>
+  <main>
+    <p class="disclaimer">Educational playbook only. Not investment advice. 数据来自 data/reports.json，不是盘中直连。没有日线结构，不会给 BUY SETUP。</p>
+    <div id="out"></div>
+  </main>
+  <script>
+    const usd = n => n==null ? "—" : Math.abs(n)>=1e6 ? "$"+(n/1e6).toFixed(2)+"M" : Math.abs(n)>=1e3 ? "$"+(n/1e3).toFixed(1)+"k" : "$"+Math.round(n);
+    function ruler(r) {
+      const s=r.spot, marks=[];
+      if (r.putWall) marks.push([r.putWall.strike,"P-wall"]);
+      if (r.em) marks.push([s-r.em.em,"-EM"]);
+      marks.push([s,"SPOT"]);
+      if (r.star) marks.push([r.star.strike,"★ "+r.star.typ[0].toUpperCase()]);
+      if (r.callWall) marks.push([r.callWall.strike,"C-wall"]);
+      if (r.em) marks.push([s+r.em.em,"+EM"]);
+      marks.sort((a,b)=>a[0]-b[0]);
+      return marks.map(([k,tag])=>{
+        const d=k-s, p=d/s*100;
+        return k.toFixed(2).padStart(9)+"  "+(d>=0?"+":"")+d.toFixed(2)+" ("+(d>=0?"+":"")+p.toFixed(1)+"%)  "+tag;
+      }).join("\n");
+    }
+    function show(r) {
+      if (r.error) { document.getElementById("out").innerHTML = "<p>"+r.symbol+" 失败："+r.error+"</p>"; return; }
+      const vcls = r.verdict.startsWith("WAIT") ? "v-WAIT" : r.verdict.startsWith("SHORT") ? "v-SHORT" : "v-AVOID";
+      const rows = (r.rows||[]).map(x => "<tr class=\""+x.typ+"\"><td>"+x.yymmdd+" "+x.dte+"d</td><td>"+(x.typ==="call"?"C":"P")+" "+x.strike+(x.star?" ★":"")+"</td><td>"+(x.dist>=0?"+":"")+x.dist+" / "+(x.pct>=0?"+":"")+x.pct+"%</td><td>"+x.vol+" / "+x.oi+(x.voi?(" "+x.voi+"x"):"")+"</td><td>"+usd(x.prem)+"</td></tr>").join("");
+      const one = r.star ? (r.symbol+" "+r.spot.toFixed(2)+"，"+r.lean+"；星标 "+r.star.yymmdd+" "+(r.star.typ==="call"?"C":"P")+r.star.strike+"。结构未接，"+r.verdict+"。") : (r.symbol+" 没有干净星标，"+r.verdict+"。");
+      document.getElementById("out").innerHTML = "<div class=\"card\"><h2>"+r.symbol+" · "+(r.asof||"")+"</h2><div class=\"verdict "+vcls+"\">"+r.verdict+"</div><div class=\"sub\">质量分 "+r.score+"/10 · IV30 "+(r.iv30 ?? "—")+"</div></div><div class=\"card\"><h2>大白话</h2><p>"+r.lean+"。买权权利金 "+usd(r.callPrem)+"，卖权 "+usd(r.putPrem)+". "+(r.em?("期望波动 ±$"+r.em.em+"。"):"")+(r.callWall?("上方墙 "+r.callWall.strike+"。"):"")+(r.putWall?("下方墙 "+r.putWall.strike+"。"):"")+"</p></div><div class=\"card\"><h2>价格尺</h2><pre>"+ruler(r)+"</pre></div><div class=\"card\"><h2>哪些档值得看</h2><table><thead><tr><th>到期</th><th>档</th><th>距离</th><th>量/持仓</th><th>权利金</th></tr></thead><tbody>"+(rows||"<tr><td colspan=5>无</td></tr>")+"</tbody></table></div><div class=\"card\"><h2>一句话</h2><p>"+one+"</p></div>";
+    }
+    fetch("data/reports.json?t="+Date.now()).then(r=>r.json()).then(bundle=>{
+      const reps = bundle.reports||{};
+      document.getElementById("meta").textContent = "快照 "+(bundle.updated||"")+" · "+(bundle.source||"");
+      const btns = document.getElementById("btns");
+      Object.keys(reps).forEach((k,i)=>{
+        const b=document.createElement("button");
+        b.textContent=k;
+        b.onclick=()=>{ [...btns.children].forEach(x=>x.classList.remove("on")); b.classList.add("on"); show(reps[k]); };
+        if(i===0){ b.classList.add("on"); show(reps[k]); }
+        btns.appendChild(b);
+      });
+    }).catch(()=>{ document.getElementById("meta").textContent = "读不到 data/reports.json。请先开 GitHub Pages。"; });
+  </script>
+</body>
+</html>
