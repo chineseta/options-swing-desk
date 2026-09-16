@@ -1,0 +1,21 @@
+name: refresh-quotes
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 13-20 * * 1-5"
+permissions:
+  contents: write
+jobs:
+  quotes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull last prices
+        run: python3 scripts/quotes.py
+      - name: Commit quotes
+        run: |
+          git config user.name "quote-bot"
+          git config user.email "quote-bot@users.noreply.github.com"
+          git add data/quotes.json
+          git diff --cached --quiet || git commit -m "refresh last prices"
+          git push
