@@ -27,6 +27,8 @@
     h2 { margin:0 0 8px; font-size:12px; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; }
     .v-WAIT { color:var(--amber); } .v-AVOID { color:var(--red); } .v-SHORT { color:var(--blue); }
     .verdict { font-size:22px; font-weight:700; }
+    .px { font-size:28px; font-weight:700; }
+    .up { color:var(--green); } .dn { color:var(--red); }
     pre { background:#0a1016; padding:10px; border-radius:8px; overflow:auto; font-size:12px; }
     table { width:100%; border-collapse:collapse; font-size:13px; }
     th,td { padding:6px; border-bottom:1px solid #18222c; text-align:left; }
@@ -45,21 +47,23 @@
     <div class="row" id="btns"></div>
   </header>
   <main>
-    <p class="disclaimer">Educational only. 自选存本机。快照里有的立刻出报告；没有的加入后编辑 data/watchlist.json 并跑 refresh-chains。</p>
+    <p class="disclaimer">Educational only. 股价约每 5 分钟更新（Yahoo 最新价）；期权链约每 15 分钟更新（CBOE 延迟）。不是 OPRA 真实时。</p>
     <div id="out"></div>
   </main>
   <script>
-    const CATALOG=["SPY","QQQ","IWM","NVDA","TSLA","AAPL","MSFT","AMZN","META","GOOGL","AMD","AVGO","PLTR","INTC","MU","TSM","NFLX","COIN","MSTR","IBIT","SMCI","NOK","CRM","ORCL","QCOM","AMAT","SNOW","CRWD","UBER","JPM","XOM","UNH","COST","WMT","V","MA"];
+    const CATALOG=["SPY","QQQ","IWM","NVDA","TSLA","AAPL","MSFT","AMZN","META","GOOGL","AMD","AVGO","PLTR","INTC","MU","TSM","NFLX","COIN","MSTR","IBIT","SMCI","NOK"];
     const usd=n=>n==null?"—":Math.abs(n)>=1e6?"$"+(n/1e6).toFixed(2)+"M":Math.abs(n)>=1e3?"$"+(n/1e3).toFixed(1)+"k":"$"+Math.round(n);
     const norm=s=>(s||"").toUpperCase().replace(/[^A-Z.\-]/g,"").slice(0,12);
-    let reports={}, current=null;
+    let reports={}, quotes={}, quotesAt="", chainAt="", current=null;
     function loadWatch(){ try{return JSON.parse(localStorage.getItem("osd_watch")||"[]");}catch(e){return[];} }
     function saveWatch(list){ localStorage.setItem("osd_watch", JSON.stringify(list)); }
+    function live(sym){ return quotes[sym] && quotes[sym].price!=null ? quotes[sym] : null; }
     function ruler(r){
-      const s=r.spot, marks=[];
+      const livePx=live(r.symbol);
+      const s=livePx?livePx.price:r.spot, marks=[];
       if(r.putWall) marks.push([r.putWall.strike,"P-wall"]);
       if(r.em) marks.push([s-r.em.em,"-EM"]);
-      marks.push([s,"SPOT"]);
+      marks.push([s, livePx?"LIVE":"SPOT"]);
       if(r.star) marks.push([r.star.strike,"\u2605 "+(r.star.typ||"c")[0].toUpperCase()]);
       if(r.callWall) marks.push([r.callWall.strike,"C-wall"]);
       if(r.em) marks.push([s+r.em.em,"+EM"]);
@@ -70,14 +74,19 @@
       const out=document.getElementById("out");
       if(!r){out.innerHTML="<p class='sub'>没有选中的代码。</p>";return;}
       if(r.pending){
-        out.innerHTML="<div class='card'><h2>"+r.symbol+"</h2><p>已加入自选，快照里还没有这条链。</p><p class='sub'>编辑 <a style='color:#6cb6ff' href='https://github.com/chineseta/options-swing-desk/edit/main/data/watchlist.json'>data/watchlist.json</a> 写入代码，再跑 Actions → refresh-chains。</p></div>";
+        const q=live(r.symbol);
+        out.innerHTML="<div class='card'><h2>"+r.symbol+"</h2>"+(q?("<div class='px "+(q.change>=0?"up":"dn")+"'>"+Number(q.price).toFixed(2)+"  "+(q.change>=0?"+":"")+q.change+" ("+(q.pct>=0?"+":"")+q.pct+"%)</div>"):"")+"<p>已加入自选，链快照还没有。编辑 watchlist.json 后跑 refresh-chains。</p></div>";
         return;
       }
       if(r.error){out.innerHTML="<p>"+r.symbol+" 失败："+r.error+"</p>";return;}
+      const q=live(r.symbol);
+      const px=q?q.price:r.spot;
+      const ch=q?q.change:null, pct=q?q.pct:null;
+      const dir=ch==null?"":(ch>=0?"up":"dn");
       const vcls=(r.verdict||"").startsWith("WAIT")?"v-WAIT":(r.verdict||"").startsWith("SHORT")?"v-SHORT":"v-AVOID";
       const rows=(r.rows||[]).map(x=>"<tr class='"+x.typ+"'><td>"+x.yymmdd+" "+x.dte+"d</td><td>"+(x.typ==="call"?"C":"P")+" "+x.strike+(x.star?" \u2605":"")+"</td><td>"+(x.dist>=0?"+":"")+x.dist+" / "+(x.pct>=0?"+":"")+x.pct+"%</td><td>"+x.vol+" / "+x.oi+(x.voi?(" "+x.voi+"x"):"")+"</td><td>"+usd(x.prem)+"</td></tr>").join("");
-      const one=r.star?(r.symbol+" "+Number(r.spot).toFixed(2)+"，"+r.lean+"；星标 "+r.star.yymmdd+" "+(r.star.typ==="call"?"C":"P")+r.star.strike+"。结构未接，"+r.verdict+"。"):(r.symbol+" 没有干净星标，"+r.verdict+"。");
-      out.innerHTML="<div class='card'><h2>"+r.symbol+" · "+(r.asof||"")+"</h2><div class='verdict "+vcls+"'>"+r.verdict+"</div><div class='sub'>质量分 "+r.score+"/10 · IV30 "+(r.iv30??"—")+" · 现价 "+Number(r.spot).toFixed(2)+"</div></div><div class='card'><h2>大白话</h2><p>"+r.lean+"。买权 "+usd(r.callPrem)+"，卖权 "+usd(r.putPrem)+"。 "+(r.em?("期望波动 ±$"+r.em.em+"。"):"")+(r.callWall?("上方墙 "+r.callWall.strike+"。"):"")+(r.putWall?("下方墙 "+r.putWall.strike+"。"):"")+"</p></div><div class='card'><h2>价格尺</h2><pre>"+ruler(r)+"</pre></div><div class='card'><h2>哪些档值得看</h2><table><thead><tr><th>到期</th><th>档</th><th>距离</th><th>量/持仓</th><th>权利金</th></tr></thead><tbody>"+(rows||"<tr><td colspan=5>无</td></tr>")+"</tbody></table></div><div class='card'><h2>一句话</h2><p>"+one+"</p></div>";
+      const one=r.star?(r.symbol+" "+Number(px).toFixed(2)+"，"+r.lean+"；星标 "+r.star.yymmdd+" "+(r.star.typ==="call"?"C":"P")+r.star.strike+"。"+r.verdict+"。"):(r.symbol+" 没有干净星标，"+r.verdict+"。");
+      out.innerHTML="<div class='card'><h2>"+r.symbol+"</h2><div class='px "+dir+"'>"+Number(px).toFixed(2)+(ch==null?"":"  "+(ch>=0?"+":"")+Number(ch).toFixed(2)+" ("+(pct>=0?"+":"")+pct+"%)")+"</div><div class='sub'>"+(q?"股价 Yahoo 快照 "+(quotesAt||""):"股价取自链快照")+" · 链 "+(r.asof||chainAt||"")+"</div><div class='verdict "+vcls+"'>"+r.verdict+"</div><div class='sub'>质量分 "+r.score+"/10 · IV30 "+(r.iv30??"—")+"</div></div><div class='card'><h2>大白话</h2><p>"+r.lean+"。买权 "+usd(r.callPrem)+"，卖权 "+usd(r.putPrem)+"。 "+(r.em?("期望波动 ±$"+r.em.em+"。"):"")+(r.callWall?("上方墙 "+r.callWall.strike+"。"):"")+(r.putWall?("下方墙 "+r.putWall.strike+"。"):"")+"</p></div><div class='card'><h2>价格尺</h2><pre>"+ruler(r)+"</pre></div><div class='card'><h2>哪些档值得看</h2><table><thead><tr><th>到期</th><th>档</th><th>距离</th><th>量/持仓</th><th>权利金</th></tr></thead><tbody>"+(rows||"<tr><td colspan=5>无</td></tr>")+"</tbody></table></div><div class='card'><h2>一句话</h2><p>"+one+"</p></div>";
     }
     function watchList(){return [...new Set([...loadWatch(),...Object.keys(reports)])];}
     function openSym(k){ if(!k){show(null);return;} if(reports[k]) show(reports[k]); else show({symbol:k,pending:true}); }
@@ -88,7 +97,10 @@
       current=pick;
       list.forEach(k=>{
         const wrap=document.createElement("div"); wrap.className="chip";
-        const b=document.createElement("button"); b.textContent=k; if(k===pick) b.classList.add("on");
+        const q=live(k);
+        const b=document.createElement("button");
+        b.textContent=q? (k+" "+Number(q.price).toFixed(2)) : k;
+        if(k===pick) b.classList.add("on");
         b.onclick=()=>{current=k;renderChips(k);openSym(k);};
         wrap.appendChild(b);
         if(loadWatch().includes(k)){
@@ -110,19 +122,32 @@
       const pool=[...new Set([...CATALOG,...Object.keys(reports),...loadWatch()])];
       return (q?pool.filter(s=>s.includes(q)):pool).slice(0,12);
     }
+    function stamp(){
+      document.getElementById("meta").textContent="股价 "+(quotesAt||"—")+" · 链 "+(chainAt||"—")+" · 非OPRA真实时";
+    }
+    async function pullQuotes(){
+      const urls=["data/quotes.json?t="+Date.now(),"https://raw.githubusercontent.com/chineseta/options-swing-desk/main/data/quotes.json?t="+Date.now()];
+      for(const u of urls){
+        try{
+          const r=await fetch(u,{cache:"no-store"});
+          if(!r.ok) continue;
+          const j=await r.json();
+          quotes=j.quotes||{}; quotesAt=j.updated||""; stamp(); renderChips(current); if(current) openSym(current); return;
+        }catch(e){}
+      }
+    }
     document.getElementById("add").onclick=()=>addSym(document.getElementById("q").value);
     document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter")addSym(e.target.value);});
     document.getElementById("q").addEventListener("input",e=>{
       const box=document.getElementById("sug"); const list=suggestions(e.target.value);
-      box.innerHTML=list.map(s=>"<div data-s='"+s+"'>"+s+(reports[s]?" · 有快照":"")+"</div>").join("");
+      box.innerHTML=list.map(s=>"<div data-s='"+s+"'>"+s+(reports[s]?" · 有链":"")+"</div>").join("");
       box.style.display=list.length?"block":"none";
     });
     document.getElementById("sug").addEventListener("click",e=>{const s=e.target.getAttribute("data-s"); if(s) addSym(s);});
     fetch("data/reports.json?t="+Date.now()).then(r=>r.json()).then(bundle=>{
-      reports=bundle.reports||{};
-      document.getElementById("meta").textContent="快照 "+(bundle.updated||"")+" · 可搜索添加自选";
-      renderChips(); openSym(current);
-    }).catch(()=>{document.getElementById("meta").textContent="快照失败，仍可添加自选"; renderChips();});
+      reports=bundle.reports||{}; chainAt=bundle.updated||""; stamp(); renderChips(); openSym(current);
+    }).catch(()=>{stamp(); renderChips();});
+    pullQuotes(); setInterval(pullQuotes, 60000);
   </script>
 </body>
 </html>
