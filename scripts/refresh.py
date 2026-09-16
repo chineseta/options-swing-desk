@@ -4,7 +4,7 @@ from collections import defaultdict
 from pathlib import Path
 UA={"User-Agent":"Mozilla/5.0 OptionsSwingDesk/1.1","Accept":"application/json"}
 CBOE="https://cdn.cboe.com/api/global/delayed_quotes/options/{}.json"
-SYMS=["NVDA","TSLA","SPY","QQQ","PLTR","AAPL","AMD","AVGO"]
+DEFAULT=["NVDA","TSLA","SPY","QQQ","PLTR","AAPL","AMD","AVGO"]
 OUT=Path("data/reports.json")
 def fetch(sym):
     req=urllib.request.Request(CBOE.format(sym),headers=UA)
@@ -79,14 +79,25 @@ def analyze(sym,payload):
     def wall(w):
         return None if not w else {"strike":w["strike"],"oi":int(w["oi"]),"dte":w["dte"]}
     return {"symbol":sym,"spot":spot,"iv30":iv30,"asof":asof,"lean":lean,"verdict":verdict,"score":score,"callPrem":round(call_p,0),"putPrem":round(put_p,0),"em":em,"star":None if not star else {"typ":star["typ"],"strike":star["strike"],"yymmdd":star["yymmdd"],"dte":star["dte"]},"callWall":wall(cwall),"putWall":wall(pwall),"rows":table}
+def load_syms():
+    extra=[]
+    p=Path("data/watchlist.json")
+    if p.exists():
+        raw=json.loads(p.read_text())
+        extra=raw if isinstance(raw,list) else (raw.get("symbols") or raw.get("watch") or [])
+    out=[]
+    for s in list(DEFAULT)+list(extra):
+        s=str(s).upper().strip()
+        if s and s not in out: out.append(s)
+    return out
 def main():
     reports={}
-    for s in SYMS:
+    for s in load_syms():
         try: reports[s]=analyze(s,fetch(s))
         except Exception as e: reports[s]={"symbol":s,"error":str(e)}
     OUT.parent.mkdir(parents=True,exist_ok=True)
     bundle={"updated":dt.datetime.now(dt.timezone.utc).isoformat(),"source":"CBOE delayed via GitHub Actions","reports":reports}
     OUT.write_text(json.dumps(bundle,ensure_ascii=False),encoding="utf-8")
-    print("wrote",OUT,OUT.stat().st_size)
+    print("wrote",OUT,OUT.stat().st_size, list(reports))
 if __name__=="__main__":
     main()
