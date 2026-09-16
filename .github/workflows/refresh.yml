@@ -2,7 +2,7 @@ name: refresh-chains
 on:
   workflow_dispatch:
   schedule:
-    - cron: "20,50 13-20 * * 1-5"
+    - cron: "0,15,30,45 13-20 * * 1-5"
 permissions:
   contents: write
 jobs:
