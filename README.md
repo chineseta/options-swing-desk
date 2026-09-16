@@ -1,15 +1,16 @@
-# US Options Chain Swing Desk
+# Options Swing Desk
 
-本地 Web App，按 us-options-chain-swing skill。
+浏览地址（开 Pages 后）：https://chineseta.github.io/options-swing-desk/
 
-**不是投资建议。** 手机打不开 127.0.0.1（那是开发机器）。
+仓库：https://github.com/chineseta/options-swing-desk
 
-## 电脑启动活链
+## 你要做的一次性设置（手机也行）
 
-```bash
-python3 server.py
-```
+1. 打开 https://github.com/chineseta/options-swing-desk/settings/pages
+2. Source 选 **GitHub Actions**
+3. 打开 Actions：https://github.com/chineseta/options-swing-desk/actions 允许 workflow 跑
+4. 手动 Run workflow：`pages` 和 `refresh-chains`
 
-打开 http://127.0.0.1:8765
+之后直接打开 github.io 链接就能看 NVDA / TSLA / SPY 等快照。
 
-直接打开 index.html 只能看内置示例盘，不是真实时 CBOE 行情。
+数据是 CBOE 延迟链压缩后写进 `data/reports.json`，交易日每小时更新两次。不是投资建议。
